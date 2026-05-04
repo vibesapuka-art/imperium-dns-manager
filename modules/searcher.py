@@ -1,42 +1,38 @@
 import requests
 
 def get_series_info(dns, user, password, series_id):
-    """Consulta melhorada para contar temporadas com mais precisão."""
+    """Consulta para contar temporadas."""
     if not series_id:
-        return "ID Ausente"
+        return "1 Temp."
         
     url = f"{dns}/player_api.php?username={user}&password={password}&action=get_series_info&series_id={series_id}"
     try:
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
             data = r.json()
-            
-            # Tenta pegar da lista de temporadas
+            # Tenta contar temporadas em 'seasons' ou 'episodes'
             seasons = data.get('seasons', [])
-            if isinstance(seasons, list) and len(seasons) > 0:
+            if seasons:
                 return f"{len(seasons)} Temp."
             
-            # Caso o servidor retorne de um jeito diferente (como um dicionário)
-            if isinstance(seasons, dict) and len(seasons) > 0:
-                return f"{len(seasons)} Temp."
-                
-            # Se não achou 'seasons', tenta contar os episódios agrupados (fallback)
             episodes = data.get('episodes', {})
             if episodes:
                 return f"{len(episodes)} Temp."
-                
     except:
-        return "Erro API"
-    return "1 Temp." # Padrão caso encontre a série mas não a contagem
+        pass
+    return "1 Temp."
 
 def search_content_in_dns(dns, user, password, query, mode, timeout=10):
+    """Busca individual por DNS."""
     dns = dns.strip().rstrip('/')
-    if not dns.startswith('http'): dns = 'http://' + dns
+    if not dns.startswith('http'): 
+        dns = 'http://' + dns
     
     action = "get_vod_streams" if mode == "Filmes" else "get_series"
     url = f"{dns}/player_api.php?username={user}&password={password}&action={action}"
     
     try:
+        # Timeout curto para não travar o app
         with requests.get(url, timeout=timeout, stream=True) as r:
             if r.status_code == 200:
                 catalog = r.json()
@@ -49,7 +45,6 @@ def search_content_in_dns(dns, user, password, query, mode, timeout=10):
                         if mode == "Filmes":
                             matches.append(f"🎬 {name}")
                         else:
-                            # Tenta pegar o ID da série (pode ser series_id ou id)
                             s_id = item.get('series_id') or item.get('id')
                             info = get_series_info(dns, user, password, s_id)
                             matches.append(f"📺 {name} ({info})")
@@ -60,4 +55,14 @@ def search_content_in_dns(dns, user, password, query, mode, timeout=10):
         pass
     return None
 
-# O restante do código (run_sequential_search) permanece igual
+def run_sequential_search(dns_list, user, password, query, mode, progress_bar, status_text):
+    """Loop sequencial para evitar estouro de memória."""
+    results = []
+    total = len(dns_list)
+    for i, dns in enumerate(dns_list):
+        status_text.text(f"🔎 Buscando {mode} em {i+1}/{total}: {dns}")
+        progress_bar.progress((i + 1) / total)
+        res = search_content_in_dns(dns, user, password, query, mode)
+        if res:
+            results.append(res)
+    return results
