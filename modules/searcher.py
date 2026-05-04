@@ -1,26 +1,40 @@
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
-def buscar_nos_servidores(dns, user, password, termo_busca):
+def search_content_in_dns(dns, user, password, query, timeout=12):
+    """
+    Busca um termo específico no catálogo de filmes (VOD) do servidor.
+    """
     dns = dns.strip().rstrip('/')
-    if not dns.startswith('http'): dns = 'http://' + dns
+    if not dns.startswith('http'): 
+        dns = 'http://' + dns
     
-    # Endpoint para buscar a lista de filmes (VOD)
-    url_busca = f"{dns}/player_api.php?username={user}&password={password}&action=get_vod_streams"
+    # Endpoint para pegar a lista de Streams de VOD
+    url = f"{dns}/player_api.php?username={user}&password={password}&action=get_vod_streams"
     
     try:
-        r = requests.get(url_busca, timeout=10)
-        if r.status_code == 200:
-            filmes = r.json()
-            # Filtra os filmes que contenham o termo de busca no nome
-            encontrados = [f['name'] for f in filmes if termo_busca.lower() in f['name'].lower()]
+        response = requests.get(url, timeout=timeout)
+        if response.status_code == 200:
+            catalog = response.json()
+            # Filtra itens que contenham o termo buscado (sem diferenciar maiúsculas/minúsculas)
+            matches = [item['name'] for item in catalog if query.lower() in item['name'].lower()]
             
-            if encontrados:
+            if matches:
                 return {
                     "dns": dns,
-                    "encontrados": encontrados[:5], # Retorna os 5 primeiros resultados
-                    "total": len(encontrados)
+                    "encontrados": matches[:10], # Mostra os 10 primeiros resultados
+                    "total": len(matches)
                 }
     except:
         pass
     return None
+
+def run_global_search(dns_list, user, password, query, threads):
+    results = []
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [executor.submit(search_content_in_dns, d, user, password, query) for d in dns_list]
+        for f in futures:
+            res = f.result()
+            if res:
+                results.append(res)
+    return results
